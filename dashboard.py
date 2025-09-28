@@ -119,7 +119,7 @@ TOOLS = {
         "func": lambda args: tool_calculator(args.get("expression", ""))
     },
     "rag_search": {
-        "desc": "Use this tool to answer questions about the fantasy story 'The Lantern of Aetheria'. It contains specific knowledge about characters like Kael and Elara, and places like the city of Aetheria.",
+       "desc": "Use this tool to answer questions about specific facts or entities found in an uploaded document. It should be used for details about people, companies, or concepts mentioned in the knowledge base.",
         "func": lambda args: tool_rag_search(args.get("query", ""))
     },
     "python_repl": {
@@ -207,6 +207,8 @@ EXECUTOR_SYS = """
 You are the Executor. Given the user's request, the plan, and tool observations,
 write a clear, helpful draft answer. If observations include search results, cite them inline textually (titles/domains), but do not fabricate links.
 If no tools were used, answer from general knowledge + memory context. Keep it concise unless the user asked for depth.
+- Do not add any introductory phrases like "Based on the search results..." or "The resume states...".
+- Provide only the direct answer to the user's question.
 """
 VERIFIER_SYS = """
 You are the Verifier. Check the draft for factuality, clarity, safety, and task completion.
@@ -239,6 +241,20 @@ def node_planner(state: GraphState) -> GraphState:
     log = state.get("log", [])
     user_input = state.get("user_input", "")
     file_path = state.get("file_path")
+    
+    # File: dashboard.py
+
+def node_planner(state: GraphState) -> GraphState:
+    log = state.get("log", [])
+    user_input = state.get("user_input", "")
+    file_path = state.get("file_path")
+
+    
+    if file_path:
+        log.append(f"📝 Planner: File '{os.path.basename(file_path)}' detected. Forcing RAG search.")
+        plan = [{"id": 1, "thought": "The user uploaded a file, so the answer should be in the knowledge base. I will use rag_search to find information about the user's query.", "tool": "rag_search", "args": {"query": user_input}, "output_key": "rag_results"}]
+        return {"plan": plan, "log": log, "file_path": file_path}
+    
     mem_list = mem_recall(user_input, k=4)
     mem_text = "\n".join(mem_list) if mem_list else "<none>"
     file_info = f"\nFile Path: \"{file_path}\"" if file_path else "\nFile Path: null"
@@ -258,15 +274,24 @@ def node_planner(state: GraphState) -> GraphState:
     log.append(f"📝 Planner: Generated a plan with {len(steps)} step(s).")
     return {"plan": steps, "log": log}
 
+# File: dashboard.py
+
 def node_executor(state: GraphState) -> GraphState:
+    """Runs tools and generates a draft answer."""
     log = state.get("log", [])
     plan = state.get("plan", [])
+    
+    # --- Start of Debugging Code ---
+    print(f"DEBUG: Executor received plan: {plan}")
+    # --- End of Debugging Code ---
+
     tool_steps = [step for step in plan if step.get("tool")]
     if tool_steps:
         tools_str = ", ".join([step['tool'] for step in tool_steps])
         log.append(f"🛠️ Executor: Running tool(s): {tools_str}")
     else:
         log.append("🧠 Executor: No tools to run. Answering from general knowledge.")
+
     observations = []
     for step in plan:
         tool_name = step.get("tool")
@@ -279,10 +304,17 @@ def node_executor(state: GraphState) -> GraphState:
         else:
             obs = {"note": "no_tool"}
         observations.append({"id": step.get("id"), "tool": tool_name, "args": args, "observation": obs})
+
+    # --- Start of Debugging Code ---
+    print(f"DEBUG: Executor received observations: {observations}")
+    # --- End of Debugging Code ---
+
     context_blob = json.dumps({"plan": plan, "observations": observations, "user_input": state.get("user_input", "")}, ensure_ascii=False)
     draft_prompt = "You are the Executor... \nContext JSON:\n" + context_blob + "\nDraft the answer now."
     draft = _llm.invoke(draft_prompt).content.strip()
+    
     return {"observations": observations, "draft": draft, "log": log}
+
 
 def node_verifier(state: GraphState) -> GraphState:
     log = state.get("log", [])
