@@ -1,0 +1,66 @@
+def mem_add(text: str, kind: str = "note"):
+    """Adds text to the vector store with error handling."""
+    try:
+        _vectorstore.add_texts([f"{kind}: {text}"])
+        print(f"🧠 Memory Add Request Sent: '{kind}: {text[:60]}...'")
+    except Exception as e:
+        print(f"❌ Memory Add Failed: {e}")
+
+def tool_web_search(query: str, max_results: int = 5) -> Dict[str, Any]:
+    results: List[Dict[str, Any]] = []
+    try:
+        with DDGS() as ddgs:
+            for r in ddgs.text(query, max_results=max_results):
+                results.append({
+                    "title": r.get("title"),
+                    "href": r.get("href"),
+                    "body": r.get("body"),
+                })
+    except Exception as e:
+        return {"error": f"search_failed: {e}"}
+    return {"results": results}
+
+class _MathVisitor(ast.NodeVisitor):
+    allowed_nodes = (
+        ast.Expression, ast.BinOp, ast.UnaryOp, ast.Num, ast.Load,
+        ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.Pow,
+        ast.USub, ast.UAdd, ast.FloorDiv
+    )
+    def visit(self, node):
+        if not isinstance(node, self.allowed_nodes):
+            raise ValueError(f"disallowed expression: {type(node).__name__}")
+        return super().visit(node)
+
+def tool_calculator(expression: str) -> Dict[str, Any]:
+    try:
+        node = ast.parse(expression, mode="eval")
+        _MathVisitor().visit(node)
+        value = eval(compile(node, "<calc>", "eval"), {"__builtins__": {}}, {})
+        return {"ok": True, "result": value}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ===============================================================
+# ✅ Update tool_rag_search to always use the latest persisted DB
+# ===============================================================
+
+def _run_tools(steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    observations: List[Dict[str, Any]] = []
+    for step in steps:
+        tool_name = step.get("tool")
+        args = step.get("args", {}) or {}
+        if tool_name and tool_name in TOOLS:
+            try:
+                obs = TOOLS[tool_name]["func"](args)
+            except Exception as e:
+                obs = {"error": f"tool_error: {e}"}
+        else:
+            obs = {"note": "no_tool"}
+        observations.append({
+            "id": step.get("id"),
+            "tool": tool_name,
+            "args": args,
+            "observation": obs,
+        })
+    return observations

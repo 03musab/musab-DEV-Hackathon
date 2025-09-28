@@ -1,0 +1,20 @@
+langchain
+langchain-community
+langchain-groq
+langchain-chroma
+langchain-openai
+langchain-experimental
+llama-index
+langgraph
+
+# Extra runtime libraries
+faiss-cpu
+chromadb
+gradio
+sentence-transformers
+pypdf
+unstructured[all-docs]
+python-pptx
+openpyxl
+duckduckgo-search
+ddgs
