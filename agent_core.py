@@ -1,8 +1,15 @@
+import gradio as gr
+import markdown
+import os
+import traceback
+
+from dashboard import run_agent_once
+from config import upload_file
+
 def run_agent_for_ui(user_input, history):
     print(f"Received input: {user_input}")
     result = run_agent_once(user_input)
 
-    # Format output
     log_steps = result.get("log", [])
     final_answer = result.get("final", "I'm sorry, I encountered an error.")
     
@@ -16,7 +23,6 @@ def run_agent_for_ui(user_input, history):
 
 print("Launching Gradio UI...")
 
-# Build UI with file upload + chat
 with gr.Blocks() as demo:
     gr.Markdown("## 📘 General AI Agent with Custom Knowledge Base")
     

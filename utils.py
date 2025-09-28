@@ -1,10 +1,10 @@
-def mem_add(text: str, kind: str = "note"):
-    """Adds text to the vector store with error handling."""
-    try:
-        _vectorstore.add_texts([f"{kind}: {text}"])
-        print(f"🧠 Memory Add Request Sent: '{kind}: {text[:60]}...'")
-    except Exception as e:
-        print(f"❌ Memory Add Failed: {e}")
+import os
+import json
+import ast
+from typing import Dict, Any, List
+from ddgs import DDGS
+
+# Note: These tools are self-contained and don't need to import from other project files.
 
 def tool_web_search(query: str, max_results: int = 5) -> Dict[str, Any]:
     results: List[Dict[str, Any]] = []
