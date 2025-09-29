@@ -1,3 +1,5 @@
+# dashboard.py
+# This file contains the core agent graph logic.
 from __future__ import annotations
 import os, re, json, ast
 from typing import TypedDict, List, Dict, Any, Optional
@@ -15,14 +17,18 @@ from langchain_community.document_loaders import (
     UnstructuredPowerPointLoader, UnstructuredWordDocumentLoader
 )
 
-# Only import helper functions that DO NOT import back from this file
-from utils import tool_web_search, tool_calculator
+# Import helper functions and all prompts from their separate files
+from memory import mem_add, mem_recall
 from config import safe_json_loads
+from prompts import (
+    DIRECT_ANSWER_SYS, INTENT_DISTILLER_PROMPT,
+    PLANNER_SYS, EXECUTOR_SYS, VERIFIER_SYS
+)
+# New: Import the TOOLS dictionary from the tools.py file
+from tools import TOOLS
 
-# Load API key from .env file
 dotenv.load_dotenv()
 print("API key loaded ✅")
-
 
 LLM_MODEL = os.environ.get("LLM_MODEL", "llama-4-scout-17b-16e-instruct")
 TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0"))
@@ -42,21 +48,6 @@ _embedding_fn = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
 _vectorstore: Optional[Chroma] = None
 
 
-def mem_add(text: str, kind: str = "note"):
-    if _vectorstore:
-        try:
-            _vectorstore.add_texts([f"{kind}: {text}"])
-            print(f"🧠 Memory Add Request Sent: '{kind}: {text[:60]}...'")
-        except Exception as e:
-            print(f"❌ Memory Add Failed: {e}")
-
-def mem_recall(query: str, k: int = 3):
-    """Recalls k most similar documents from the vector store."""
-    if _vectorstore:
-        docs = _vectorstore.similarity_search(query, k=k)
-        return [d.page_content for d in docs]
-    return []
-
 def tool_rag_search(query: str) -> Dict[str, Any]:
     try:
         rag_db = Chroma(
@@ -70,7 +61,6 @@ def tool_rag_search(query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"error": f"rag_search_failed: {e}"}
 
-# code for storing or uploading the data 
 def ingest_knowledge_base(file_path: str):
     """
     Ingests a user-uploaded file (txt, pdf, csv, excel, ppt, docx).
@@ -107,29 +97,7 @@ def ingest_knowledge_base(file_path: str):
     )
     print("✅ Knowledge base updated and saved.")
     return f"File '{file_path}' ingested successfully!"
-
-
-TOOLS = {
-    "web_search": {
-        "desc": "Search the web for general information, current events, or real-world people and places.",
-        "func": lambda args: tool_web_search(args.get("query", ""), int(args.get("max_results", 3)))
-    },
-    "calculator": {
-        "desc": "Evaluate arithmetic expressions.",
-        "func": lambda args: tool_calculator(args.get("expression", ""))
-    },
-    "rag_search": {
-       "desc": "Use this tool to answer questions about specific facts or entities found in an uploaded document. It should be used for details about people, companies, or concepts mentioned in the knowledge base.",
-        "func": lambda args: tool_rag_search(args.get("query", ""))
-    },
-    "python_repl": {
-        "desc": "A Python shell. Use this for complex math, data analysis, or executing any Python code. Input should be a valid Python command. The result is what is printed to standard output.",
-        "func": lambda args: {
-            "ok": True,
-            "result": "Python REPL not implemented in this script."
-        }
-    }
-}
+# The TOOLS dictionary and tool functions have been moved to tools.py
 
 class GraphState(TypedDict, total=False):
     user_input: str
@@ -141,82 +109,6 @@ class GraphState(TypedDict, total=False):
     reflections: int
     final: str
     log: List[str]
-
-DIRECT_ANSWER_SYS = """
-You are a helpful assistant that answers questions ONLY from the provided memory context.
-The memory may contain structured facts in JSON format, like {"entity": "user", "attribute": "name", "value": "haad"}.
-
-- To answer the user's question, you MUST parse these JSON facts.
-- When asked 'what is my name' or about the 'user', look for facts where 'entity' is 'user'.
-- When asked 'what is your name' or about the 'agent', look for facts where 'entity' is 'agent'.
-- Use this information to answer precisely. Do not mention the JSON structure in your answer.
-
-- If the memory does NOT contain enough information to answer, you MUST respond with the exact phrase: 'NO_DIRECT_ANSWER' and nothing else.
-"""
-INTENT_DISTILLER_PROMPT = """
-You are an intent distiller. Your job is to analyze the conversation and determine the user's real, actionable task.
-- If the user has provided a file, the primary task is to process that file using the instructions in the user's text.
-- If the user refers to a specific file (e.g., "in summary.txt"), separate the core question from the file reference.
-
-Your output should be a clear, actionable instruction for the Planner AI.
-
-Example 1:
-User input: "summarize the main points of the attached file"
-File Path: "/path/to/doc.txt"
-Result: "The user has uploaded a file at /path/to/doc.txt and wants a summary. The first step is to add the file to the knowledge base, then search it for the main points."
-
-Example 2:
-User input: "whats the poem name in summary.txt"
-File Path: null
-Result: "The user wants to know the name of the poem inside the file 'summary.txt'. The task is to search within that specific file for the poem's title."
-
-Now, distill the intent from the following:
-"""
-PLANNER_SYS = """
-You are the Planner. Your goal is to create a step-by-step plan to answer the user's task.
-**VERY IMPORTANT: Before creating a new plan, check 'Relevant memory'. If the answer is already there, your plan should be a single step to state the answer directly without using tools.**
-
-Available tools:
-{tool_list}
-
-**CRITICAL RULES for rag_search:**
-1.  When the user asks about a specific file (e.g., "in summary.txt"), you MUST use the `rag_search` tool with the `source_file` argument set to the filename (e.g., "summary.txt").
-2.  When using `source_file`, the `query` argument MUST be a question that represents the user's core goal. **DO NOT leave the query empty.** Reformulate the user's request into a proper question for the search.
-
-**Example of a good plan:**
-User Task: "The user wants to know the name of the poem inside the file 'summary.txt'."
-Correct Plan:
-{
-  "steps": [
-    {
-      "id": 1,
-      "thought": "I need to find the name of the poem inside 'summary.txt'. I will use rag_search and filter by the source file. I will also formulate a query to find the poem's name.",
-      "tool": "rag_search",
-      "args": {
-        "query": "What is the name of the poem?",
-        "source_file": "summary.txt"
-      },
-      "output_key": "poem_content"
-    }
-  ]
-}
-
-Return a STRICT JSON array named 'steps'.
-"""
-EXECUTOR_SYS = """
-You are the Executor. Given the user's request, the plan, and tool observations,
-write a clear, helpful draft answer. If observations include search results, cite them inline textually (titles/domains), but do not fabricate links.
-If no tools were used, answer from general knowledge + memory context. Keep it concise unless the user asked for depth.
-- Do not add any introductory phrases like "Based on the search results..." or "The resume states...".
-- Provide only the direct answer to the user's question.
-"""
-VERIFIER_SYS = """
-You are the Verifier. Check the draft for factuality, clarity, safety, and task completion.
-Return ONLY JSON: {"approved": bool, "feedback": "...", "final": "..."}
-- If approved: polish the draft lightly and place in 'final'.
-- If NOT approved: explain issues in 'feedback' and leave 'final' empty.
-Be conservative; prefer one more revision if unsure.
-"""
 
 def node_direct_answer(state: GraphState) -> GraphState:
     log = state.get("log", [])
@@ -242,14 +134,6 @@ def node_planner(state: GraphState) -> GraphState:
     user_input = state.get("user_input", "")
     file_path = state.get("file_path")
     
-    # File: dashboard.py
-
-def node_planner(state: GraphState) -> GraphState:
-    log = state.get("log", [])
-    user_input = state.get("user_input", "")
-    file_path = state.get("file_path")
-
-    
     if file_path:
         log.append(f"📝 Planner: File '{os.path.basename(file_path)}' detected. Forcing RAG search.")
         plan = [{"id": 1, "thought": "The user uploaded a file, so the answer should be in the knowledge base. I will use rag_search to find information about the user's query.", "tool": "rag_search", "args": {"query": user_input}, "output_key": "rag_results"}]
@@ -274,16 +158,12 @@ def node_planner(state: GraphState) -> GraphState:
     log.append(f"📝 Planner: Generated a plan with {len(steps)} step(s).")
     return {"plan": steps, "log": log}
 
-# File: dashboard.py
-
 def node_executor(state: GraphState) -> GraphState:
     """Runs tools and generates a draft answer."""
     log = state.get("log", [])
     plan = state.get("plan", [])
     
-    # --- Start of Debugging Code ---
     print(f"DEBUG: Executor received plan: {plan}")
-    # --- End of Debugging Code ---
 
     tool_steps = [step for step in plan if step.get("tool")]
     if tool_steps:
@@ -305,9 +185,7 @@ def node_executor(state: GraphState) -> GraphState:
             obs = {"note": "no_tool"}
         observations.append({"id": step.get("id"), "tool": tool_name, "args": args, "observation": obs})
 
-    # --- Start of Debugging Code ---
     print(f"DEBUG: Executor received observations: {observations}")
-    # --- End of Debugging Code ---
 
     context_blob = json.dumps({"plan": plan, "observations": observations, "user_input": state.get("user_input", "")}, ensure_ascii=False)
     draft_prompt = "You are the Executor... \nContext JSON:\n" + context_blob + "\nDraft the answer now."
