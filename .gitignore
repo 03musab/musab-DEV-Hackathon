@@ -15,3 +15,10 @@ venv/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+rag_docs/
+agent_memory/
