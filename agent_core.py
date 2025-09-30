@@ -1,3 +1,4 @@
+# agent_core.py
 import gradio as gr
 import markdown
 import os
@@ -5,10 +6,12 @@ import traceback
 
 from dashboard import run_agent_once
 from config import upload_file
+from typing import List, Dict, Any, Optional
 
 def run_agent_for_ui(user_input, history):
     print(f"Received input: {user_input}")
-    result = run_agent_once(user_input)
+    # Corrected: Pass both user_input and history to run_agent_once
+    result = run_agent_once(user_input, history)
 
     # Get the final answer and the log from the agent's result
     log_steps = result.get("log", [])

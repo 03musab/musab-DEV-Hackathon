@@ -1,6 +1,8 @@
 import os
 import json
 import ast
+import subprocess
+
 from typing import Dict, Any, List
 from ddgs import DDGS
 
@@ -45,22 +47,35 @@ def tool_calculator(expression: str) -> Dict[str, Any]:
 # ✅ Update tool_rag_search to always use the latest persisted DB
 # ===============================================================
 
-def _run_tools(steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    observations: List[Dict[str, Any]] = []
-    for step in steps:
-        tool_name = step.get("tool")
-        args = step.get("args", {}) or {}
-        if tool_name and tool_name in TOOLS:
-            try:
-                obs = TOOLS[tool_name]["func"](args)
-            except Exception as e:
-                obs = {"error": f"tool_error: {e}"}
-        else:
-            obs = {"note": "no_tool"}
-        observations.append({
-            "id": step.get("id"),
-            "tool": tool_name,
-            "args": args,
-            "observation": obs,
-        })
-    return observations
+
+# New tools for the coding agent
+def tool_write_file(file_path: str, content: str) -> Dict[str, Any]:
+    """Writes content to a file in the sandbox environment."""
+    try:
+        with open(file_path, "w") as f:
+            f.write(content)
+        return {"status": "success", "message": f"Wrote to file: {file_path}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def tool_read_file(file_path: str) -> Dict[str, Any]:
+    """Reads content from a file in the sandbox environment."""
+    try:
+        with open(file_path, "r") as f:
+            content = f.read()
+        return {"status": "success", "content": content}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def tool_run_code(command: str) -> Dict[str, Any]:
+    """Executes a shell command in the sandbox and returns output."""
+    try:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        return {
+            "status": "success",
+            "output": result.stdout,
+            "error": result.stderr if result.stderr else None
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    

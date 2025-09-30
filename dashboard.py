@@ -19,6 +19,7 @@ from langchain_community.document_loaders import (
 
 # Import helper functions and all prompts from their separate files
 from memory import mem_add, mem_recall
+from utils import tool_web_search, tool_calculator, tool_write_file, tool_read_file, tool_run_code
 from config import safe_json_loads
 from prompts import (
     DIRECT_ANSWER_SYS, INTENT_DISTILLER_PROMPT,
@@ -26,6 +27,7 @@ from prompts import (
 )
 # New: Import the TOOLS dictionary from the tools.py file
 from tools import TOOLS
+from coding import tool_coding_agent
 
 dotenv.load_dotenv()
 print("API key loaded ✅")
@@ -109,6 +111,7 @@ class GraphState(TypedDict, total=False):
     reflections: int
     final: str
     log: List[str]
+    history: List[Dict[str, Any]]
 
 def node_direct_answer(state: GraphState) -> GraphState:
     log = state.get("log", [])
@@ -129,34 +132,57 @@ def node_direct_answer(state: GraphState) -> GraphState:
         log.append("✅ Direct Answer: Found a direct answer in memory. Finalizing.")
         return {"final": response, "log": log}
 
+
+
+
+
 def node_planner(state: GraphState) -> GraphState:
     log = state.get("log", [])
     user_input = state.get("user_input", "")
     file_path = state.get("file_path")
+    history = state.get("history", [])
+    
+    # Corrected: Only keep the last 5 turns of the conversation
+    recent_history = history[-5:]
+    
+    # Format the history into a string for the prompt
+    history_str = ""
+    for user_msg, agent_msg in recent_history:
+        history_str += f"User: {user_msg}\nAgent: {agent_msg}\n"
     
     if file_path:
         log.append(f"📝 Planner: File '{os.path.basename(file_path)}' detected. Forcing RAG search.")
         plan = [{"id": 1, "thought": "The user uploaded a file, so the answer should be in the knowledge base. I will use rag_search to find information about the user's query.", "tool": "rag_search", "args": {"query": user_input}, "output_key": "rag_results"}]
-        return {"plan": plan, "log": log, "file_path": file_path}
+        return {"plan": plan, "log": log, "file_path": file_path, "history": history}
     
     mem_list = mem_recall(user_input, k=4)
     mem_text = "\n".join(mem_list) if mem_list else "<none>"
     file_info = f"\nFile Path: \"{file_path}\"" if file_path else "\nFile Path: null"
+    
+    # Update the prompt to include the history
     distiller_prompt = (
-        INTENT_DISTILLER_PROMPT + "\nRelevant memory:\n" + mem_text + "\nUser input:\n" + user_input + file_info
+        INTENT_DISTILLER_PROMPT
+        + "\nChat History:\n" + history_str
+        + "\nRelevant memory:\n" + mem_text
+        + "\nUser input:\n" + user_input
+        + file_info
     )
     distilled_task = _llm.invoke(distiller_prompt).content.strip()
     log.append(f"🎯 Planner: Distilled user intent to: '{distilled_task}'")
     tool_list_str = "\n".join([f"- {name}: {meta['desc']}" for name, meta in TOOLS.items()])
     planner_prompt_template = PLANNER_SYS.replace("{tool_list}", tool_list_str)
     prompt = (
-        planner_prompt_template + "\nRelevant memory (may be empty):\n" + mem_text + "\nUser task:\n" + distilled_task + "\nRespond with ONLY JSON in the format: {\"steps\":[...] }\n"
+        planner_prompt_template
+        + "\nRelevant memory (may be empty):\n" + mem_text
+        + "\nUser task:\n" + distilled_task
+        + "\nRespond with ONLY JSON in the format: {\"steps\":[...] }\n"
     )
     raw = _llm.invoke(prompt).content.strip()
     parsed = safe_json_loads(raw)
     steps = parsed.get("steps") if isinstance(parsed, dict) and isinstance(parsed.get("steps"), list) else []
     log.append(f"📝 Planner: Generated a plan with {len(steps)} step(s).")
-    return {"plan": steps, "log": log}
+    
+    return {"plan": steps, "log": log, "history": history}
 
 def node_executor(state: GraphState) -> GraphState:
     """Runs tools and generates a draft answer."""
@@ -281,22 +307,51 @@ def build_graph():
     workflow.add_edge("memory", END)
     return workflow.compile()
 
-def run_agent_once(user_input: str) -> Dict[str, Any]:
+def run_agent_once(user_input: str, history: List[Dict[str, Any]]) -> Dict[str, Any]:
     global _vectorstore
+    
+    graph = build_graph()
+    state: GraphState = {
+        "user_input": user_input, 
+        "reflections": 0, 
+        "log": [],
+        "history": history # <-- New: Add history to the state
+    }
+    result = graph.invoke(state)
+    return result
+
+def _run_tools(steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    observations: List[Dict[str, Any]] = []
+    for step in steps:
+        tool_name = step.get("tool")
+        args = step.get("args", {}) or {}
+        if tool_name and tool_name in TOOLS:
+            try:
+                obs = TOOLS[tool_name]["func"](args)
+            except Exception as e:
+                obs = {"error": f"tool_error: {e}"}
+        else:
+            obs = {"note": "no_tool"}
+        observations.append({
+            "id": step.get("id"),
+            "tool": tool_name,
+            "args": args,
+            "observation": obs,
+        })
+    return observations
+
+
+if __name__ == "__main__":
     _vectorstore = Chroma(
         collection_name=MEM_COLLECTION,
         embedding_function=_embedding_fn,
         persist_directory=PERSIST_DIR
     )
-    graph = build_graph()
-    state: GraphState = {"user_input": user_input, "reflections": 0, "log": []}
-    result = graph.invoke(state)
-    return result
-
-if __name__ == "__main__":
+    
     if not os.environ.get("API_KEY"):
         print("[WARN] API_KEY is not set. Set it before running for LLM calls.")
     demo_q = "Give me 3 bullet points on why AI agents are useful for students."
-    out = run_agent_once(demo_q)
+    # Pass an empty list for the history argument
+    out = run_agent_once(demo_q, [])
     print("\n=== FINAL ANSWER ===\n", out.get("final"))
     print("\n--- Debug state keys ---\n", list(out.keys()))
