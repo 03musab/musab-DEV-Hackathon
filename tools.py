@@ -13,6 +13,9 @@ from utils import tool_web_search, tool_calculator
 # Imports from your globals file
 from globals import _embedding_fn, RAG_PERSIST_DIR, RAG_COLLECTION
 
+# Import the coding agent from coding.py
+from coding import tool_coding_agent
+
 
 def tool_rag_search(query: str, source_file: str | None = None) -> Dict[str, Any]:
     try:
@@ -54,5 +57,10 @@ TOOLS = {
             "ok": True,
             "result": "Python REPL not implemented in this script."
         }
+    },
+    "coding_agent_tool": {
+        "desc": "A specialized agent for writing, executing, and debugging code. Use this for all coding-related tasks.",
+        "func": lambda args: tool_coding_agent(args.get("user_input", ""))
     }
+   
 }
