@@ -3,6 +3,7 @@
 from __future__ import annotations
 from typing import Dict, Any, List
 
+import os
 from langchain_chroma import Chroma
 from ddgs import DDGS
 
@@ -13,14 +14,22 @@ from utils import tool_web_search, tool_calculator
 from globals import _embedding_fn, RAG_PERSIST_DIR, RAG_COLLECTION
 
 
-def tool_rag_search(query: str) -> Dict[str, Any]:
+def tool_rag_search(query: str, source_file: str | None = None) -> Dict[str, Any]:
     try:
         rag_db = Chroma(
             persist_directory=RAG_PERSIST_DIR,
             embedding_function=_embedding_fn,
             collection_name=RAG_COLLECTION
         )
-        docs = rag_db.similarity_search(query, k=3)
+        
+        search_kwargs = {"k": 3}
+        if source_file:
+            # We need to construct the full path as stored in Chroma's metadata
+            full_path = os.path.join("uploads", source_file)
+            search_kwargs["filter"] = {"source": full_path}
+            print(f"🔍 RAG search filtered by source: {full_path}")
+
+        docs = rag_db.similarity_search(query, **search_kwargs)
         results_text = "\n---\n".join([d.page_content for d in docs])
         return {"results": results_text or "No relevant info found in the uploaded file."}
     except Exception as e:
@@ -36,8 +45,8 @@ TOOLS = {
         "func": lambda args: tool_calculator(args.get("expression", ""))
     },
     "rag_search": {
-       "desc": "Use this tool to answer questions about specific facts or entities found in an uploaded document. It should be used for details about people, companies, or concepts mentioned in the knowledge base.",
-        "func": lambda args: tool_rag_search(args.get("query", ""))
+       "desc": "Use this tool to answer questions about specific facts or entities found in an uploaded document. If the user has selected a specific file, you MUST use the `source_file` argument with the filename.",
+        "func": lambda args: tool_rag_search(args.get("query", ""), args.get("source_file"))
     },
     "python_repl": {
         "desc": "A Python shell. Use this for complex math, data analysis, or executing any Python code. Input should be a valid Python command. The result is what is printed to standard output.",

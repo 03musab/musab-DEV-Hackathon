@@ -1,5 +1,3 @@
-# dashboard.py
-# This file contains the core agent graph logic.
 from __future__ import annotations
 import os, re, json, ast
 from typing import TypedDict, List, Dict, Any, Optional
@@ -17,50 +15,23 @@ from langchain_community.document_loaders import (
     UnstructuredPowerPointLoader, UnstructuredWordDocumentLoader
 )
 
-# Import helper functions and all prompts from their separate files
-from memory import mem_add, mem_recall
+# Only import helper functions that DO NOT import back from this file
 from config import safe_json_loads
+from memory import mem_add, mem_recall
 from prompts import (
-    DIRECT_ANSWER_SYS, INTENT_DISTILLER_PROMPT,
-    PLANNER_SYS, EXECUTOR_SYS, VERIFIER_SYS
+    DIRECT_ANSWER_SYS, PLANNER_SYS, EXECUTOR_SYS, VERIFIER_SYS
 )
-# New: Import the TOOLS dictionary from the tools.py file
 from tools import TOOLS
+from globals import (
+    _llm, _embedding_fn, _vectorstore, MAX_REFLECTIONS, MEM_COLLECTION,
+    PERSIST_DIR, RAG_PERSIST_DIR, RAG_COLLECTION
+)
 
+# Load API key from .env file
 dotenv.load_dotenv()
 print("API key loaded ✅")
 
-LLM_MODEL = os.environ.get("LLM_MODEL", "llama-4-scout-17b-16e-instruct")
-TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0"))
-MAX_REFLECTIONS = int(os.environ.get("MAX_REFLECTIONS", "2"))
-MEM_COLLECTION = os.environ.get("MEM_COLLECTION", "mini_manus_memory")
-EMBED_MODEL = os.environ.get("EMBED_MODEL", "all-MiniLM-L6-v2")
-PERSIST_DIR = "/kaggle/working/agent_memory"
-RAG_PERSIST_DIR = "/kaggle/working/"
-RAG_COLLECTION = "rag_docs"
-
-_llm = ChatCerebras(
-    model=LLM_MODEL,
-    temperature=TEMPERATURE,
-    api_key=os.getenv("API_KEY")
-)
-_embedding_fn = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
-_vectorstore: Optional[Chroma] = None
-
-
-def tool_rag_search(query: str) -> Dict[str, Any]:
-    try:
-        rag_db = Chroma(
-            persist_directory=RAG_PERSIST_DIR,
-            embedding_function=_embedding_fn,
-            collection_name=RAG_COLLECTION
-        )
-        docs = rag_db.similarity_search(query, k=3)
-        results_text = "\n---\n".join([d.page_content for d in docs])
-        return {"results": results_text or "No relevant info found in the uploaded file."}
-    except Exception as e:
-        return {"error": f"rag_search_failed: {e}"}
-
+# code for storing or uploading the data 
 def ingest_knowledge_base(file_path: str):
     """
     Ingests a user-uploaded file (txt, pdf, csv, excel, ppt, docx).
@@ -97,7 +68,6 @@ def ingest_knowledge_base(file_path: str):
     )
     print("✅ Knowledge base updated and saved.")
     return f"File '{file_path}' ingested successfully!"
-# The TOOLS dictionary and tool functions have been moved to tools.py
 
 class GraphState(TypedDict, total=False):
     user_input: str
@@ -108,6 +78,7 @@ class GraphState(TypedDict, total=False):
     feedback: str
     reflections: int
     final: str
+    file_path: Optional[str]
     log: List[str]
 
 def node_direct_answer(state: GraphState) -> GraphState:
@@ -133,24 +104,14 @@ def node_planner(state: GraphState) -> GraphState:
     log = state.get("log", [])
     user_input = state.get("user_input", "")
     file_path = state.get("file_path")
-    
-    if file_path:
-        log.append(f"📝 Planner: File '{os.path.basename(file_path)}' detected. Forcing RAG search.")
-        plan = [{"id": 1, "thought": "The user uploaded a file, so the answer should be in the knowledge base. I will use rag_search to find information about the user's query.", "tool": "rag_search", "args": {"query": user_input}, "output_key": "rag_results"}]
-        return {"plan": plan, "log": log, "file_path": file_path}
-    
+
     mem_list = mem_recall(user_input, k=4)
     mem_text = "\n".join(mem_list) if mem_list else "<none>"
-    file_info = f"\nFile Path: \"{file_path}\"" if file_path else "\nFile Path: null"
-    distiller_prompt = (
-        INTENT_DISTILLER_PROMPT + "\nRelevant memory:\n" + mem_text + "\nUser input:\n" + user_input + file_info
-    )
-    distilled_task = _llm.invoke(distiller_prompt).content.strip()
-    log.append(f"🎯 Planner: Distilled user intent to: '{distilled_task}'")
+    log.append(f"🎯 Planner: Using user input directly for planning: '{user_input}'")
     tool_list_str = "\n".join([f"- {name}: {meta['desc']}" for name, meta in TOOLS.items()])
     planner_prompt_template = PLANNER_SYS.replace("{tool_list}", tool_list_str)
     prompt = (
-        planner_prompt_template + "\nRelevant memory (may be empty):\n" + mem_text + "\nUser task:\n" + distilled_task + "\nRespond with ONLY JSON in the format: {\"steps\":[...] }\n"
+        planner_prompt_template + "\nRelevant memory (may be empty):\n" + mem_text + "\nUser task:\n" + user_input + "\nRespond with ONLY JSON in the format: {\"steps\":[...] }\n"
     )
     raw = _llm.invoke(prompt).content.strip()
     parsed = safe_json_loads(raw)
@@ -163,7 +124,9 @@ def node_executor(state: GraphState) -> GraphState:
     log = state.get("log", [])
     plan = state.get("plan", [])
     
+    # --- Start of Debugging Code ---
     print(f"DEBUG: Executor received plan: {plan}")
+    # --- End of Debugging Code ---
 
     tool_steps = [step for step in plan if step.get("tool")]
     if tool_steps:
@@ -185,10 +148,17 @@ def node_executor(state: GraphState) -> GraphState:
             obs = {"note": "no_tool"}
         observations.append({"id": step.get("id"), "tool": tool_name, "args": args, "observation": obs})
 
+    # --- Start of Debugging Code ---
     print(f"DEBUG: Executor received observations: {observations}")
+    # --- End of Debugging Code ---
 
-    context_blob = json.dumps({"plan": plan, "observations": observations, "user_input": state.get("user_input", "")}, ensure_ascii=False)
-    draft_prompt = "You are the Executor... \nContext JSON:\n" + context_blob + "\nDraft the answer now."
+    # Construct a proper prompt using the EXECUTOR_SYS system prompt
+    context_for_draft = (
+        f"User Request: {state.get('user_input', '')}\n"
+        f"Plan: {json.dumps(plan, ensure_ascii=False)}\n"
+        f"Observations: {json.dumps(observations, ensure_ascii=False)}"
+    )
+    draft_prompt = f"{EXECUTOR_SYS}\n\n{context_for_draft}\n\nNow, write the draft answer."
     draft = _llm.invoke(draft_prompt).content.strip()
     
     return {"observations": observations, "draft": draft, "log": log}
@@ -281,22 +251,23 @@ def build_graph():
     workflow.add_edge("memory", END)
     return workflow.compile()
 
-def run_agent_once(user_input: str) -> Dict[str, Any]:
-    global _vectorstore
-    _vectorstore = Chroma(
+def run_agent_once(user_input: str, file_path: Optional[str] = None) -> Dict[str, Any]:
+    # Correctly initialize the vectorstore and assign it to the global variable
+    # that the rest of the application (e.g., memory.py) uses.
+    globals()["_vectorstore"] = Chroma(
         collection_name=MEM_COLLECTION,
         embedding_function=_embedding_fn,
         persist_directory=PERSIST_DIR
     )
     graph = build_graph()
-    state: GraphState = {"user_input": user_input, "reflections": 0, "log": []}
-    result = graph.invoke(state)
+    state: GraphState = {"user_input": user_input, "file_path": file_path, "reflections": 0, "log": []}
+    result = graph.invoke(state, {"recursion_limit": 150})
     return result
 
 if __name__ == "__main__":
     if not os.environ.get("API_KEY"):
         print("[WARN] API_KEY is not set. Set it before running for LLM calls.")
     demo_q = "Give me 3 bullet points on why AI agents are useful for students."
-    out = run_agent_once(demo_q)
+    out = run_agent_once(demo_q, file_path=None)
     print("\n=== FINAL ANSWER ===\n", out.get("final"))
     print("\n--- Debug state keys ---\n", list(out.keys()))

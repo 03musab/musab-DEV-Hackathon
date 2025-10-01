@@ -44,23 +44,3 @@ def tool_calculator(expression: str) -> Dict[str, Any]:
 # ===============================================================
 # ✅ Update tool_rag_search to always use the latest persisted DB
 # ===============================================================
-
-def _run_tools(steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    observations: List[Dict[str, Any]] = []
-    for step in steps:
-        tool_name = step.get("tool")
-        args = step.get("args", {}) or {}
-        if tool_name and tool_name in TOOLS:
-            try:
-                obs = TOOLS[tool_name]["func"](args)
-            except Exception as e:
-                obs = {"error": f"tool_error: {e}"}
-        else:
-            obs = {"note": "no_tool"}
-        observations.append({
-            "id": step.get("id"),
-            "tool": tool_name,
-            "args": args,
-            "observation": obs,
-        })
-    return observations

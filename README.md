@@ -90,7 +90,7 @@ Interactive visual outputs alongside conversational AI:
 
 The existing codebase leverages:
 - **LangGraph** for agent orchestration and workflow management
-- **Gradio** for the current prototype UI
+- **Flask & React** for the backend API and frontend UI
 - **Chroma** vector store for semantic memory
 - **Modular tool system** for extensible capabilities
 
@@ -104,7 +104,7 @@ The existing codebase leverages:
 - Key endpoints: `/submit-prompt`, `/approve-prompt`, `/session/{session_id}`
 
 **Frontend Transformation:**
-- Current: Gradio UI in `agent_core.py`
+- Current: React UI in `frontend/` directory
 - Future: Custom React application with real-time updates
 - WebSockets for live chat and approval synchronization
 
@@ -168,8 +168,8 @@ npm start
 
 - [x] Core agent reasoning loop
 - [x] Multimodal agent implementation
-- [ ] React-based UI migration
-- [ ] Flask/FastAPI backend integration
+- [x] React-based UI migration
+- [x] Flask backend integration
 - [ ] Memory persistence system
 - [ ] Research collaborator agents
 - [ ] Visual dashboard generation
