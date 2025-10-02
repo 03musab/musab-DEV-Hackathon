@@ -1,68 +1,137 @@
-# dashboard.py
-# This file contains the core agent graph logic.
+# agent.py
 from __future__ import annotations
-import os, re, json, ast
+import os
+import json
 from typing import TypedDict, List, Dict, Any, Optional
 
-import dotenv
-from langchain_cerebras import ChatCerebras
-from langchain.schema import HumanMessage, SystemMessage, AIMessage
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langgraph.graph import StateGraph, END
-from ddgs import DDGS
 from langchain_community.document_loaders import (
     TextLoader, PyPDFLoader, CSVLoader, UnstructuredExcelLoader,
     UnstructuredPowerPointLoader, UnstructuredWordDocumentLoader
 )
 
-# Import helper functions and all prompts from their separate files
-from memory import mem_add, mem_recall
-from utils import tool_web_search, tool_calculator, tool_write_file, tool_read_file, tool_run_code
-from config import safe_json_loads
-from prompts import (
-    DIRECT_ANSWER_SYS, INTENT_DISTILLER_PROMPT,
-    PLANNER_SYS, EXECUTOR_SYS, VERIFIER_SYS
+from core.config import (
+    _llm, _embedding_fn, RAG_PERSIST_DIR, RAG_COLLECTION,
+    MAX_REFLECTIONS
 )
-# New: Import the TOOLS dictionary from the tools.py file
+from core.utils import safe_json_loads
+from core.memory import mem_add, mem_recall
 from tools import TOOLS
-from coding import tool_coding_agent
 
-dotenv.load_dotenv()
-print("API key loaded ✅")
+# --- Prompts (formerly prompts.py) ---
 
-LLM_MODEL = os.environ.get("LLM_MODEL", "llama-4-scout-17b-16e-instruct")
-TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0"))
-MAX_REFLECTIONS = int(os.environ.get("MAX_REFLECTIONS", "2"))
-MEM_COLLECTION = os.environ.get("MEM_COLLECTION", "mini_manus_memory")
-EMBED_MODEL = os.environ.get("EMBED_MODEL", "all-MiniLM-L6-v2")
-PERSIST_DIR = "/kaggle/working/agent_memory"
-RAG_PERSIST_DIR = "/kaggle/working/"
-RAG_COLLECTION = "rag_docs"
+DIRECT_ANSWER_SYS = """
+You are a helpful assistant that answers questions ONLY from the provided memory context.
+The memory may contain structured facts in JSON format, like {"entity": "user", "attribute": "name", "value": "haad"}.
 
-_llm = ChatCerebras(
-    model=LLM_MODEL,
-    temperature=TEMPERATURE,
-    api_key=os.getenv("API_KEY")
-)
-_embedding_fn = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
-_vectorstore: Optional[Chroma] = None
+- To answer the user's question, you MUST parse these JSON facts.
+- When asked 'what is my name' or about the 'user', look for facts where 'entity' is 'user'.
+- When asked 'what is your name' or about the 'agent', look for facts where 'entity' is 'agent'.
+- Use this information to answer precisely. Do not mention the JSON structure in your answer.
+
+- If the memory does NOT contain enough information to answer, you MUST respond with the exact phrase: 'NO_DIRECT_ANSWER' and nothing else.
+"""
+INTENT_DISTILLER_PROMPT = """
+You are an intent distiller. Your job is to analyze the conversation and determine the user's real, actionable task.
+- If the user has provided a file, the primary task is to process that file using the instructions in the user's text.
+- If the user refers to a specific file (e.g., "in summary.txt"), separate the core question from the file reference.
+- If the user's input contains keywords like "document," "file," "uploaded," "ingested," or "saved," the distilled task MUST include a step to use the `rag_search` tool.
+Your output should be a clear, actionable instruction for the Planner AI.
+
+Example 1:
+User input: "summarize the main points of the attached file"
+File Path: "/path/to/doc.txt"
+Result: "The user has uploaded a file at /path/to/doc.txt and wants a summary. The first step is to add the file to the knowledge base, then search it for the main points."
+
+Example 2:
+User input: "whats the poem name in summary.txt"
+File Path: null
+Result: "The user wants to know the name of the poem inside the file 'summary.txt'. The task is to search within that specific file for the poem's title."
+
+Now, distill the intent from the following:
+"""
+PLANNER_SYS = """
+You are the Planner, a specialized agent within a multi-agent system that includes other agents like a 'Research Agent' and a 'Critic Agent'. Your primary role is to create a step-by-step plan to answer the user's task.
+
+**VERY IMPORTANT**: Before creating a new plan, you must check the 'Relevant memory'.
+- If the memory contains a satisfactory answer, your plan should be a single step to state the answer directly without using any tools.
+- This check is crucial for efficiency and to avoid redundant work by other agents in the system.
+
+**CRITICAL RULE: If the user's request is about a document, a file, or asks to 'summarize this', you MUST use the `rag_search` tool.**
+
+Available tools:
+{tool_list}
+
+**CRITICAL RULES: for coding_agent**
+1.  If the user asks you to write, execute, debug, test, or analyze code, or if the request contains keywords like "function," "class," "script," "bug," or "run this command," you MUST use the `coding_agent_tool`.
+2.  The `user_input` argument for `coding_agent_tool` should be a detailed description of the coding task.
 
 
-def tool_rag_search(query: str) -> Dict[str, Any]:
-    try:
-        rag_db = Chroma(
-            persist_directory=RAG_PERSIST_DIR,
-            embedding_function=_embedding_fn,
-            collection_name=RAG_COLLECTION
-        )
-        docs = rag_db.similarity_search(query, k=3)
-        results_text = "\n---\n".join([d.page_content for d in docs])
-        return {"results": results_text or "No relevant info found in the uploaded file."}
-    except Exception as e:
-        return {"error": f"rag_search_failed: {e}"}
+**CRITICAL RULES for rag_search:**
+1.  When the user asks about a specific file (e.g., "in summary.txt"), you MUST use the `rag_search` tool with the `source_file` argument set to the filename (e.g., "summary.txt").
+2.  When using `source_file`, the `query` argument MUST be a question that represents the user's core goal. **DO NOT leave the query empty.** Reformulate the user's request into a proper question for the search.
 
+
+**Example of a good plan:**
+User Task: "The user wants to know the name of the poem inside the file 'summary.txt'."
+Correct Plan:
+{
+  "steps": [
+    {
+      "id": 1,
+      "thought": "The user wants a summary of a document. No specific file was selected, so I will search the entire knowledge base.",
+      "tool": "rag_search",
+      "args": {
+        "query": "summarize the document"
+      },
+      "output_key": "poem_content"
+    }
+  ]
+}
+
+**Example 2 (Specific File Query):**
+User Task: "summarize the main points of JobSnap_PRO_PLAN_FEATURES.docx"
+Correct Plan:
+{
+  "steps": [
+    {
+      "id": 1,
+      "thought": "The user wants a summary of a specific file. I must use the rag_search tool and provide the filename in the `source_file` argument.",
+      "tool": "rag_search",
+      "args": {
+        "query": "summarize the main points",
+        "source_file": "JobSnap_PRO_PLAN_FEATURES.docx"
+      },
+      "output_key": "summary_content"
+    }
+  ]
+}
+
+Return a STRICT JSON array named 'steps'.
+"""
+EXECUTOR_SYS = """
+You are the Executor. Given the user's request, the plan, and tool observations,
+Write a concise, factual draft answer.
+- If observations include search results, integrate them directly into the answer. Do not cite them or fabricate links.
+- If a tool indicates "No relevant info found", state that directly and concisely. Do not elaborate or ask for more information.
+- If no tools were used, answer from general knowledge + memory context.
+- Provide ONLY the direct answer to the user's question. Do not include any conversational filler, intros, outros, or explanations of your process.
+"""
+VERIFIER_SYS = """
+You are the Verifier. Your job is to check the draft for factuality, clarity, and task completion.
+- If the draft is a greeting, a simple conversational response, or an acknowledgement, it is considered approved and complete.
+- If the draft is a factual answer, check it against the provided observations for accuracy.
+Return ONLY JSON: {"approved": bool, "feedback": "...", "final": "..."}
+- If approved: Polish the draft to be a direct, non-conversational final answer, removing any conversational filler, and place it in 'final'.
+- If NOT approved: Explain issues in 'feedback' and leave 'final' empty.
+Be conservative; prefer one more revision if unsure.
+"""
+
+# --- Knowledge Base Ingestion ---
+
+# code for storing or uploading the data 
 def ingest_knowledge_base(file_path: str):
     """
     Ingests a user-uploaded file (txt, pdf, csv, excel, ppt, docx).
@@ -99,7 +168,8 @@ def ingest_knowledge_base(file_path: str):
     )
     print("✅ Knowledge base updated and saved.")
     return f"File '{file_path}' ingested successfully!"
-# The TOOLS dictionary and tool functions have been moved to tools.py
+
+# --- Agent State and Nodes ---
 
 class GraphState(TypedDict, total=False):
     user_input: str
@@ -110,6 +180,7 @@ class GraphState(TypedDict, total=False):
     feedback: str
     reflections: int
     final: str
+    file_path: Optional[str]
     log: List[str]
     history: List[Dict[str, Any]]
 
@@ -125,15 +196,15 @@ def node_direct_answer(state: GraphState) -> GraphState:
     mem_text = "\n".join(mem_list) if mem_list else "<none>"
     prompt = (DIRECT_ANSWER_SYS + "\nRelevant memory:\n" + mem_text + "\nUser input:\n" + state.get("user_input", ""))
     response = _llm.invoke(prompt).content.strip()
+    
     if "NO_DIRECT_ANSWER" in response:
         log.append("🤔 Direct Answer: No direct answer found in memory. Proceeding to planner.")
-        return {"log": log}
+        # Return the original state, plus the updated log
+        return {**state, "log": log}
     else:
         log.append("✅ Direct Answer: Found a direct answer in memory. Finalizing.")
-        return {"final": response, "log": log}
-
-
-
+        # Return the original state, plus the final answer and updated log
+        return {**state, "final": response, "log": log}
 
 
 def node_planner(state: GraphState) -> GraphState:
@@ -189,7 +260,9 @@ def node_executor(state: GraphState) -> GraphState:
     log = state.get("log", [])
     plan = state.get("plan", [])
     
+    # --- Start of Debugging Code ---
     print(f"DEBUG: Executor received plan: {plan}")
+    # --- End of Debugging Code ---
 
     tool_steps = [step for step in plan if step.get("tool")]
     if tool_steps:
@@ -211,10 +284,24 @@ def node_executor(state: GraphState) -> GraphState:
             obs = {"note": "no_tool"}
         observations.append({"id": step.get("id"), "tool": tool_name, "args": args, "observation": obs})
 
+    # --- Start of Debugging Code ---
     print(f"DEBUG: Executor received observations: {observations}")
+    # --- End of Debugging Code ---
 
-    context_blob = json.dumps({"plan": plan, "observations": observations, "user_input": state.get("user_input", "")}, ensure_ascii=False)
-    draft_prompt = "You are the Executor... \nContext JSON:\n" + context_blob + "\nDraft the answer now."
+    # Construct a proper prompt using the EXECUTOR_SYS system prompt
+    # If there's a single observation and it's a string, we can likely use it directly.
+    # This is a good heuristic for when a sub-agent returns a complete answer.
+    if len(observations) == 1 and isinstance(observations[0].get("observation"), str):
+        draft = observations[0]["observation"]
+        log.append("📝 Executor: Using direct string output from tool as draft.")
+        return {"observations": observations, "draft": draft, "log": log}
+
+    context_for_draft = (
+        f"User Request: {state.get('user_input', '')}\n"
+        f"Plan: {json.dumps(plan, ensure_ascii=False)}\n"
+        f"Observations: {json.dumps(observations, ensure_ascii=False)}"
+    )
+    draft_prompt = f"{EXECUTOR_SYS}\n\n{context_for_draft}\n\nNow, write the draft answer."
     draft = _llm.invoke(draft_prompt).content.strip()
     
     return {"observations": observations, "draft": draft, "log": log}
@@ -275,6 +362,8 @@ def should_plan_or_finish(state: GraphState) -> str:
     else:
         return "plan"
         
+# --- Graph Builder ---
+
 def build_graph():
     workflow = StateGraph(GraphState)
     workflow.add_node("direct_answer", node_direct_answer)
@@ -307,9 +396,9 @@ def build_graph():
     workflow.add_edge("memory", END)
     return workflow.compile()
 
+# --- Main Agent Runner ---
+
 def run_agent_once(user_input: str, history: List[Dict[str, Any]]) -> Dict[str, Any]:
-    global _vectorstore
-    
     graph = build_graph()
     state: GraphState = {
         "user_input": user_input, 
@@ -319,39 +408,3 @@ def run_agent_once(user_input: str, history: List[Dict[str, Any]]) -> Dict[str, 
     }
     result = graph.invoke(state)
     return result
-
-def _run_tools(steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    observations: List[Dict[str, Any]] = []
-    for step in steps:
-        tool_name = step.get("tool")
-        args = step.get("args", {}) or {}
-        if tool_name and tool_name in TOOLS:
-            try:
-                obs = TOOLS[tool_name]["func"](args)
-            except Exception as e:
-                obs = {"error": f"tool_error: {e}"}
-        else:
-            obs = {"note": "no_tool"}
-        observations.append({
-            "id": step.get("id"),
-            "tool": tool_name,
-            "args": args,
-            "observation": obs,
-        })
-    return observations
-
-
-if __name__ == "__main__":
-    _vectorstore = Chroma(
-        collection_name=MEM_COLLECTION,
-        embedding_function=_embedding_fn,
-        persist_directory=PERSIST_DIR
-    )
-    
-    if not os.environ.get("API_KEY"):
-        print("[WARN] API_KEY is not set. Set it before running for LLM calls.")
-    demo_q = "Give me 3 bullet points on why AI agents are useful for students."
-    # Pass an empty list for the history argument
-    out = run_agent_once(demo_q, [])
-    print("\n=== FINAL ANSWER ===\n", out.get("final"))
-    print("\n--- Debug state keys ---\n", list(out.keys()))

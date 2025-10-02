@@ -1,24 +1,75 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.pkl
-
-# Virtual environments
-venv/
+# ===============================================================
+# General
+# ===============================================================
+# Environment variables - VERY IMPORTANT
 .env
+.env.*
 
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints/
+# IDE and editor folders
+.vscode/
+.idea/
 
-# OS files
+# OS-generated files
 .DS_Store
 Thumbs.db
 
-# Logs and databases
+# Log files
 *.log
-*.sqlite3
-*.db
-rag_docs/
-agent_memory/
+
+# ===============================================================
+# Python / Flask Backend
+# ===============================================================
+# Byte-compiled / optimized / C extensions
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# User-uploaded files
+uploads/
+
+# Vectorstore persistence directory
+/agent_memory/
+/rag_docs/
+
+# ===============================================================
+# Node.js / React Frontend
+# ===============================================================
+# Dependency directories
+frontend/node_modules/
+
+# Build output
+frontend/build/
+
+# Logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Other
+frontend/.pnp
+frontend/.pnp.js
+frontend/coverage/

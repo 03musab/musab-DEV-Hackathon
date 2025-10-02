@@ -1,22 +1,18 @@
 langchain
 langchain-community
 langchain-groq
+langchain-huggingface
 langchain-chroma
 langchain-openai
 langchain-experimental
 llama-index
 langgraph
 
-langgraph[tooling]
-
-langchain>=0.2.1
-
 langchain-cerebras
 
 # Extra runtime libraries
 faiss-cpu
 chromadb
-gradio
 sentence-transformers
 pypdf
 unstructured[all-docs]
@@ -24,3 +20,6 @@ python-pptx
 openpyxl
 duckduckgo-search
 ddgs
+Flask
+Flask-Cors
+Werkzeug
