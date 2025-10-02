@@ -1,7 +1,6 @@
-# memory.py
-
-from typing import Dict, Any, List
-from globals import _vectorstore
+# core/memory.py
+from typing import List
+from .config import _vectorstore
 
 def mem_add(text: str, kind: str = "note"):
     if _vectorstore:
@@ -11,7 +10,7 @@ def mem_add(text: str, kind: str = "note"):
         except Exception as e:
             print(f"❌ Memory Add Failed: {e}")
 
-def mem_recall(query: str, k: int = 3):
+def mem_recall(query: str, k: int = 3) -> List[str]:
     """Recalls k most similar documents from the vector store."""
     if _vectorstore:
         docs = _vectorstore.similarity_search(query, k=k)

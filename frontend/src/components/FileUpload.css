@@ -1,0 +1,312 @@
+/* ==================== File Upload Container ==================== */
+.file-upload-container {
+    display: flex;
+    flex-direction: column;
+    /* gap: 8px; */ /* Gap is now inside the content area */
+    max-width: 600px;
+   
+}
+
+/* ==================== Collapsible Header ==================== */
+.file-upload-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    padding: 4px 0;
+    user-select: none; /* Prevents text selection on click */
+}
+
+.file-upload-title {
+    font-family: var(--font-family-slab);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+    margin: 0;
+}
+
+.file-upload-toggle-icon {
+    color: var(--text-muted);
+    transition: transform 0.3s ease;
+    transform: translateY(-7px);
+}
+
+.file-upload-toggle-icon.closed {
+    transform: rotate(-90deg);
+}
+
+.file-upload-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, margin-top 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    max-height: 500px; /* Adjust if content is taller */
+    opacity: 1;
+    margin-top: 8px;
+}
+
+.file-upload-content.closed {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+}
+
+/* ==================== Dropzone ==================== */
+.file-upload-dropzone {
+    position: relative;
+    border: 2px dashed rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 10px; /* Further reduced padding */
+    background: rgba(255, 255, 255, 0.02);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.file-upload-dropzone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(96, 165, 250, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.file-upload-dropzone:hover::before {
+    opacity: 1;
+}
+
+.file-upload-dropzone:hover {
+    border-color: rgba(96, 165, 250, 0.5);
+    background: rgba(255, 255, 255, 0.04);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.file-upload-dropzone.dragging {
+    border-color: #60a5fa;
+    background: rgba(96, 165, 250, 0.1);
+    transform: scale(1.02);
+}
+
+.file-upload-dropzone.has-file {
+    cursor: default;
+    border-style: solid;
+    border-color: rgba(96, 165, 250, 0.4);
+    background: rgba(96, 165, 250, 0.05);
+}
+
+.file-upload-input {
+    display: none;
+}
+
+/* ==================== Upload Prompt ==================== */
+.file-upload-prompt {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px; /* Further reduced gap */
+    text-align: center;
+}
+
+.upload-icon {
+    color: rgba(96, 165, 250, 0.7);
+    margin-bottom: 4px; /* Further reduced margin */
+}
+
+.file-upload-prompt h4 {
+    margin: 0;
+    font-size: 0.7rem; /* Further reduced font size */
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.file-upload-prompt p {
+    margin: 0;
+    font-size: 0.6rem; /* Further reduced font size */
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.file-upload-hint {
+    font-size: 0.65rem; /* Reduced font size */
+    color: rgba(255, 255, 255, 0.4);
+    margin-top: 4px; /* Reduced margin */
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ==================== File Preview ==================== */
+.file-upload-preview {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.file-preview-icon {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(96, 165, 250, 0.3);
+}
+
+.file-extension {
+    position: absolute;
+    bottom: 4px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.file-preview-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.file-preview-info h4 {
+    margin: 0 0 4px 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-preview-info p {
+    margin: 0;
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.file-remove-btn {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.file-remove-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+    transform: scale(1.1);
+}
+
+/* ==================== Progress Bar ==================== */
+.file-upload-progress {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.progress-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    box-shadow: 0 0 10px rgba(96, 165, 250, 0.5);
+}
+
+.progress-text {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #60a5fa;
+    min-width: 40px;
+    text-align: right;
+}
+
+/* ==================== Upload Button ==================== */
+.file-upload-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+    color: white;
+    border: none;
+    border-radius: 7px; /* Slightly smaller to match new scale */
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(96, 165, 250, 0.3);
+}
+
+.file-upload-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(96, 165, 250, 0.4);
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.file-upload-btn:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(96, 165, 250, 0.3);
+}
+
+.file-upload-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: linear-gradient(135deg, rgba(96, 165, 250, 0.3) 0%, rgba(59, 130, 246, 0.3) 100%);
+    box-shadow: none;
+}
+
+/* ==================== Responsive ==================== */
+@media (max-width: 768px) {
+    .file-upload-container {
+        max-width: 100%;
+    }
+
+    .file-upload-dropzone {
+        padding: 24px 16px;
+    }
+
+    .file-upload-prompt h4 {
+        font-size: 0.85rem;
+    }
+
+    .file-upload-prompt p {
+        font-size: 0.75rem;
+    }
+
+    .file-preview-icon {
+        width: 48px;
+        height: 48px;
+    }
+
+    .file-upload-btn {
+        width: 100%;
+    }
+}
