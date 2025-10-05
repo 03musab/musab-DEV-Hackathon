@@ -6,9 +6,9 @@ This document provides a technical overview of the AI Agent Platform, intended f
 
 The project is a collaborative multi-agent AI system. Users interact with a team of specialized AI agents (e.g., a general thinker, a fast coder) that work together to accomplish complex tasks. The system is designed to be transparent, showing its thought process, and requires user approval for key actions.
 
-- **Backend**: Python (Flask, LangGraph)
+- **Backend**: Python (Flask)
 - **Frontend**: React
-- **Core AI**: LangChain with models like Meta LLaMA and Cerebras.
+- **Core AI**: Python agent framework using Cerebras models (Llama 3.3 70B) via the Cerebras Cloud SDK.
 
 ## 2. System Architecture
 
@@ -16,7 +16,7 @@ The architecture is composed of a few key layers:
 
 1.  **Frontend UI (React)**: The user-facing interface where users submit prompts and view results. It communicates with the backend via a REST API.
 2.  **Web Server (Flask)**: The API layer that receives user requests, manages file uploads for the knowledge base, and routes tasks to the agent system.
-3.  **Agent Orchestrator (LangGraph)**: The "brain" of the system. It's a state machine (a graph) that manages the entire lifecycle of a user request, from initial planning to final verification.
+3.  **Agent Orchestrator (Custom Framework)**: The "brain" of the system. A background worker (`background_worker.py`) listens for approved tasks and triggers the appropriate agent.
 4.  **Specialized Agents & Tools**: These are the "workers." The orchestrator delegates tasks to specialized agents (like the `coding_agent`) or individual tools (like `web_search` or `rag_search`).
 5.  **Memory & Knowledge Base (Chroma)**: A vector store that provides the agents with long-term memory and a searchable knowledge base from user-uploaded documents.
 
@@ -26,41 +26,26 @@ The architecture is composed of a few key layers:
 
 The backend is written in Python and handles all the core logic.
 
-### `main.py`
-
-*   **Purpose**: The main command-line (CLI) entry point for the application.
-*   **Key Logic**:
-    *   Uses the `click` library to define commands.
-    *   The `serve` command starts the Flask web server.
-    *   It's responsible for the initial setup, like loading environment variables and initializing the Chroma vector store for agent memory before the app starts.
-
 ### `app.py`
 
 *   **Purpose**: The Flask web server that exposes the agent's capabilities via a REST API.
 *   **Key API Endpoints**:
     *   `/api/chat`: The primary endpoint for user interaction. It receives a user's message and conversation history, passes it to the agent system via `run_agent_once`, and returns the final answer.
     *   `/api/upload`: Handles file uploads. It saves the file and calls `ingest_knowledge_base` to process and add its content to the RAG vector store.
-    *   `/api/health`, `/api/features`, `/api/status`: Helper endpoints to provide status information and metadata to the frontend.
+    *   `/api/proposal/<id>/interrupt`: Allows the frontend to signal an interruption for a running agent task.
 *   **Configuration**: It uses a `Config` class to manage settings like the upload folder and CORS origins, making it easy to configure through environment variables.
 
 ### `agent.py`
 
-*   **Purpose**: This is the heart of the AI system. It defines the main agentic workflow using `LangGraph`.
+*   **Purpose**: This file now contains the simplified, primary agent logic.
 *   **Key Components**:
-    *   **`GraphState`**: A `TypedDict` that defines the "state" of the workflow. It tracks everything from the user's input to the final answer, including plans, observations, and logs.
-    *   **Nodes**: Each function starting with `node_` (e.g., `node_planner`, `node_executor`, `node_verifier`) represents a step in the agent's thought process.
-        *   `node_direct_answer`: First checks if a simple answer exists in memory.
-        *   `node_planner`: Analyzes the user's request and creates a step-by-step plan of which tools to use.
-        *   `node_executor`: Executes the tools defined in the plan and gathers the results ("observations").
-        *   `node_verifier`: Reviews the draft answer for quality and accuracy. It can approve the answer or send it back for revision.
-    *   **`build_graph()`**: This function assembles all the nodes and defines the edges (the flow of logic) between them, creating the final, compiled state machine.
-    *   **`run_agent_once()`**: The main entry function called by `app.py`. It initializes the graph with the user's input and history, invokes it, and returns the final result.
+    *   **`run_agent_once()`**: The main entry function called by the `background_worker`. It directly calls the Cerebras API using the `cerebras-cloud-sdk`, passing the user's prompt and conversation history to the `llama-3.3-70b` model. This has replaced a more complex LangGraph implementation for reliability and performance.
 
 ### `coding.py`
 
 *   **Purpose**: Defines a self-contained, specialized "Coding Agent." This agent is treated as a **tool** that the main agent in `agent.py` can call for any coding-related task.
 *   **Key Logic**:
-    *   It has its own `LangGraph` workflow, similar to `agent.py` but focused specifically on coding.
+    *   It has its own `LangGraph` workflow focused specifically on coding, using `ChatCerebras` for its LLM calls.
     *   **Nodes**:
         *   `node_coding_planner`: Creates a plan to write, run, or read files.
         *   `node_coding_executor`: Executes the plan using tools like `tool_write_file` and `tool_run_code`.
@@ -76,11 +61,6 @@ The backend is written in Python and handles all the core logic.
     *   `tool_write_file`, `tool_read_file`, `tool_run_code`: Provide file system and code execution capabilities.
     *   `tool_rag_search`: Searches the Chroma vector store for information from uploaded documents.
 *   **`TOOLS` Dictionary**: This dictionary maps a tool's name to its function and a description. The Planner agent uses these descriptions to decide which tool is appropriate for a given task.
-
-### `prompts.py`
-
-*   **Purpose**: Contains system prompts that define the "personality" and instructions for the agents.
-*   **Note**: While this file exists, most of the core prompts (`PLANNER_SYS`, `EXECUTOR_SYS`, etc.) have been moved directly into `agent.py` for better co-location with the logic that uses them. `prompts.py` currently holds the prompt for the coding agent's planner.
 
 ---
 

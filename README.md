@@ -51,31 +51,16 @@ Interactive visual outputs alongside conversational AI:
 
 ## 🤖 Core Agent Capabilities
 
-### 🧠 Meta LLaMA Agent – The Smart Thinker
+### ⚡ Cerebras-Powered Agent – The Core Engine
 
 **What it does:**
-- **Reasoning**: Performs complex logical deductions and problem-solving
-- **Summarization**: Condenses large volumes of text into concise summaries
-- **General NLP Tasks**: Sentiment analysis, entity recognition, translation
-- **Learning & Adaptation**: Continuously refines performance through feedback
+Our platform is powered by the **Llama 3.3 70B model, optimized and served via the Cerebras Cloud**. This allows a single, powerful model to act as both a sophisticated "thinker" and a high-performance "worker."
 
-**Best for:** Understanding, analyzing, and thinking through complex problems
+- **High-Speed Reasoning & Planning**: Performs complex logical deductions, summarization, and step-by-step planning with minimal latency.
+- **Advanced Code Generation**: The specialized `coding_agent` leverages the Cerebras-optimized model to write, debug, and execute high-quality code.
+- **Large Context Handling**: Optimized for lengthy and detailed prompts, making it ideal for analyzing complex documents or conversation histories.
 
-### ⚡ Cerebras Agent – The Fast Worker
-
-**What it does:**
-- **High-Speed Inference**: Executes computationally intensive tasks with minimal latency
-- **Large Prompt Handling**: Optimized for lengthy and detailed inputs
-- **Code Generation & Optimization**: Generates high-quality code and suggests improvements
-- **Parallel Processing**: Handles multiple demanding operations simultaneously
-
-**Best for:** Building, executing, and processing at scale
-
----
-
-**Together, they form a complete team:**
-- 🧠 One thinks and understands
-- ⚡ One builds and executes fast
+**Best for:** A unified, high-performance solution for both complex reasoning and rapid task execution.
 
 ## 🏗️ System Architecture
 
@@ -85,8 +70,7 @@ Interactive visual outputs alongside conversational AI:
 |-----------|------|
 | **Frontend UI** | Shared interface with prompt lock, cooldown timer, and chat panel |
 | **Agent Orchestrator** | Routes tasks to appropriate agents and manages consent logic |
-| **Meta LLaMA Agent** | Handles reasoning, summarization, and general NLP tasks |
-| **Cerebras Agent** | Executes high-speed inference for large prompts or code generation |
+| **Core AI Agent (Cerebras)** | The primary engine for all reasoning, planning, and code generation tasks, powered by the Llama 3.3 70B model on Cerebras Cloud. |
 | **Docker MCP Gateway** | Hosts isolated tools (sandbox, file manager, visualizer) securely |
 | **Shared Memory Store** | Tracks session history, agent states, and user approvals |
 
@@ -153,7 +137,7 @@ npm start
 
 - **Backend**: Python, FastAPI, LangGraph
 - **Frontend**: React, TypeScript
-- **AI Models**: Meta LLaMA, Cerebras
+- **AI Models**: Cerebras (Llama 3.3 70B)
 - **Database**: PostgreSQL, Redis, Supabase
 - **Vector Store**: Chroma → Cloud-hosted solution
 - **Authentication**: Firebase Auth / Clerk
