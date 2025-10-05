@@ -2,9 +2,13 @@
 
 > A collaborative multi-agent AI system where specialized agents work together to accomplish complex tasks
 
+
+
 ## 🎯 Project Vision
 
 We're creating a platform where users interact with multiple AI agents, each optimized for a specific type of task—like analyzing spreadsheets, building slide decks, or summarizing web content. Think of it as a digital task force of AI specialists working in parallel.
+
+The platform features a unique collaborative workflow where tasks must be approved by multiple users before being sent to an AI agent for processing, ensuring human-in-the-loop oversight.
 
 ## ✨ Features
 
@@ -89,33 +93,17 @@ Interactive visual outputs alongside conversational AI:
 ### Current Implementation
 
 The existing codebase leverages:
-- **LangGraph** for agent orchestration and workflow management
+- **A custom agent framework** for agent orchestration and workflow management
 - **Flask & React** for the backend API and frontend UI
-- **Chroma** vector store for semantic memory
-- **Modular tool system** for extensible capabilities
+- **Supabase** for the database, real-time updates, and authentication.
+- **A modular tool system** for extensible agent capabilities.
 
-### Migration Roadmap
-
-#### From Current → Future Architecture
-
-**Backend Evolution:**
-- Current: LangGraph graph in `dashboard.py`
-- Future: FastAPI backend with graph as core orchestrator
-- Key endpoints: `/submit-prompt`, `/approve-prompt`, `/session/{session_id}`
-
-**Frontend Transformation:**
-- Current: React UI in `frontend/` directory
-- Future: Custom React application with real-time updates
-- WebSockets for live chat and approval synchronization
-
-**Memory & State:**
-- Current: Local Chroma vector store
-- Future: Cloud-hosted vector DB + PostgreSQL/Redis for session state
-- Maintains existing memory interaction patterns (`mem_add`, `mem_recall`)
-
-**Authentication:**
-- Future: Firebase Auth or Clerk for user management
-- Session-based collaborative workflows
+### Future Architecture
+The project is designed to evolve towards a more scalable architecture, potentially incorporating:
+- **FastAPI** for a high-performance backend.
+- **WebSockets** for even faster real-time communication.
+- **Cloud-hosted Vector DB** for scalable memory and RAG.
+- **Docker-based tool isolation** for enhanced security.
 
 ## 🚀 Getting Started
 
