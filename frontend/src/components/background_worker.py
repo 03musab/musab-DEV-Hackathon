@@ -26,7 +26,7 @@ def process_proposal(proposal_id, prompt, conversation_id):
     """
     Runs the agent in a separate thread to avoid blocking the Realtime listener.
     """
-    print(f"✅ Thread started for proposal '{proposal_id}' in conversation '{conversation_id}'.")
+    print(f"\n[WORKER] ✅ Thread started for proposal '{proposal_id}' in conversation '{conversation_id}'.")
     
     try:
         # --- Fetch Conversation History ---
@@ -42,7 +42,7 @@ def process_proposal(proposal_id, prompt, conversation_id):
                 history.append({"role": "user", "content": msg['content']})
 
         # Run the agent with the prompt from the proposal
-        print(f"Running agent with prompt: '{prompt}' and {len(history)} history messages.")
+        print(f"[WORKER] 🧠 Running agent with prompt: '{prompt}' and {len(history)} history messages.")
         result = run_agent_once(prompt, history)
         final_answer = result.get("final", "Agent finished but no answer was provided.")
         
@@ -51,10 +51,10 @@ def process_proposal(proposal_id, prompt, conversation_id):
         current_proposal_status = supabase.table('proposals').select('status').eq('id', proposal_id).single().execute().data.get('status')
         
         if current_proposal_status == 'interrupted':
-            print(f"🛑 Task '{proposal_id}' was interrupted by the user. Discarding result.")
+            print(f"[WORKER] 🛑 Task '{proposal_id}' was interrupted by the user. Discarding result.")
             # The status is already 'interrupted', so we don't need to do anything else.
         else:
-            print(f"🤖 Agent finished. Updating proposal '{proposal_id}' with analysis.")
+            print(f"[WORKER] 🤖 Agent finished. Updating proposal '{proposal_id}' with analysis.")
             # Update the proposal in the database with the agent's analysis
             supabase.table('proposals').update({
                 'agent_analysis': final_answer,
@@ -62,7 +62,7 @@ def process_proposal(proposal_id, prompt, conversation_id):
             }).eq('id', proposal_id).execute()
         
     except Exception as e:
-        print(f"❌ Error processing proposal {proposal_id}: {e}")
+        print(f"[WORKER] ❌ Error processing proposal {proposal_id}: {e}")
         # Optionally update the proposal with an error message
         supabase.table('proposals').update({'agent_analysis': f"An error occurred: {e}", 'status': 'error'}).eq('id', proposal_id).execute()
 
@@ -70,14 +70,14 @@ def process_rejection(proposal_id, prompt):
     """
     Handles fully rejected proposals using the Cerebras model.
     """
-    print(f"⚠️ Thread started for REJECTED proposal '{proposal_id}'. Running Cerebras model with prompt: '{prompt}'")
+    print(f"\n[WORKER] ⚠️ Thread started for REJECTED proposal '{proposal_id}'. Running Cerebras model with prompt: '{prompt}'")
     
     try:
         # Use the specialized Cerebras LLM for this task
         rejection_prompt = f"The following task was rejected by the team. Please analyze why it might have been rejected and suggest an alternative approach or explanation.\n\nRejected Task: \"{prompt}\""
         result = _coding_llm.invoke(rejection_prompt).content
         
-        print(f"🤖 Cerebras model finished. Updating proposal '{proposal_id}' with rejection analysis.")
+        print(f"[WORKER] 🤖 Cerebras model finished. Updating proposal '{proposal_id}' with rejection analysis.")
         
         # Update the proposal with the model's response
         supabase.table('proposals').update({
@@ -86,14 +86,14 @@ def process_rejection(proposal_id, prompt):
         }).eq('id', proposal_id).execute()
         
     except Exception as e:
-        print(f"❌ Error processing rejected proposal {proposal_id}: {e}")
+        print(f"[WORKER] ❌ Error processing rejected proposal {proposal_id}: {e}")
         supabase.table('proposals').update({'agent_analysis': f"An error occurred during rejection processing: {e}", 'status': 'error'}).eq('id', proposal_id).execute()
 
 def handle_proposal_update(payload):
     """
     This function is called when a change is detected in the 'proposals' table.
     """
-    print(f"Change detected in proposals table: {payload['eventType']}")
+    print(f"\n[REALTIME] Change detected in 'proposals' table: {payload['eventType']}")
     
     # We only care about updates where the status becomes 'approved'
     if payload['eventType'] == 'UPDATE':

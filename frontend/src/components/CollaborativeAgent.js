@@ -9,6 +9,8 @@ import TeamChatPanel from './TeamChatPanel'; // This will be the right-side team
 import AgentChatPanel from './AgentChatPanel';
 
 const CollaborativeAgent = ({ recipient }) => {
+    // --- STATE MANAGEMENT ---
+
     const [prompt, setPrompt] = React.useState('');
     const [cooldown, setCooldown] = React.useState(0);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -27,6 +29,8 @@ const CollaborativeAgent = ({ recipient }) => {
         // Read theme from localStorage to apply correct background color
         return localStorage.getItem('theme') || 'dark';
     });
+
+    // --- EFFECTS ---
 
     // Scroll to bottom of chat
     useEffect(() => {
@@ -336,6 +340,8 @@ const CollaborativeAgent = ({ recipient }) => {
         }
     };
 
+    // --- HANDLERS ---
+
 
     const handleApproval = async (decision) => {
         if (!proposal || !currentUser) return;
@@ -443,6 +449,8 @@ const CollaborativeAgent = ({ recipient }) => {
             addToast(error.message || 'Failed to stop the agent.', 'error');
         }
     };
+
+    // --- RENDER LOGIC ---
     if (loading) {
         return (
             <div className="collaborative-agent-page">
