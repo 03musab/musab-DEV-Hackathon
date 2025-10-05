@@ -1,162 +1,70 @@
+# app.py
 import os
-import traceback
-import logging
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from langchain_chroma import Chroma
-from werkzeug.utils import secure_filename
 
-# Import your existing agent logic
 from agent import run_agent_once, ingest_knowledge_base
-# Import the core config to access global variables and constants
-import core.config
 
+# --- Flask App Initialization ---
 
-# --- Logging Configuration ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+app = Flask(__name__, static_folder='../frontend/build', static_url_path='/')
 
-# --- Basic Flask App Setup ---
-app = Flask(__name__)
+# Enable CORS for all routes, allowing your frontend to communicate with the backend.
+# This is crucial for development when frontend and backend run on different ports.
+CORS(app)
 
-# --- Configuration ---
-# Best practice: Use environment variables for configuration
-class Config:
-    UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads')
-    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(',')
-    DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() in ('true', '1', 't')
+# --- Supabase Client Initialization ---
+# This makes the Supabase client available to all API endpoints in this file.
+from supabase import create_client, Client
 
-app.config.from_object(Config)
+url: str = os.environ.get("REACT_APP_SUPABASE_URL")
+key: str = os.environ.get("REACT_APP_SUPABASE_ANON_KEY") # Use anon key for server-side actions
 
-# --- CORS Configuration ---
-CORS(app, resources={r"/api/*": {"origins": app.config['CORS_ORIGINS']}})
+if not url or not key:
+    raise Exception("Supabase URL and Key must be provided in your .env file for the backend server.")
 
-# --- Ensure upload folder exists ---
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
+supabase: Client = create_client(url, key)
+print("✅ Supabase client initialized for Flask server.")
 
-# --- Initialize Vector Store on Startup ---
-print("🧠 Initializing agent memory vector store for Flask app...")
-core.config._vectorstore = Chroma(
-    collection_name=core.config.MEM_COLLECTION,
-    embedding_function=core.config._embedding_fn,
-    persist_directory=core.config.PERSIST_DIR
-)
-print("✅ Agent memory loaded for Flask app.")
+# --- API Routes ---
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """
-    Health check endpoint to confirm the API is running.
-    """
-    return jsonify({"status": "ok"}), 200
-
-
-@app.route('/api/features', methods=['GET'])
-def get_features():
-    """
-    Provides a list of features for the homepage.
-    This is mock data.
-    """
-    features = [
-        {
-            "id": 1,
-            "icon": "code",
-            "title": "Function Calling",
-            "description": "The model can call functions and integrate with external tools and APIs, extending its capabilities beyond natural language processing."
-        },
-        {
-            "id": 2,
-            "icon": "search",
-            "title": "Web Search",
-            "description": "The model can perform web searches to find real-time information, answer questions about current events, and access a vast repository of knowledge."
-        },
-        {
-            "id": 3,
-            "icon": "file-text",
-            "title": "File System Operations",
-            "description": "The model can read, write, and modify files on the local file system, enabling it to interact with and manage project files directly."
-        }
-    ]
-    return jsonify(features)
-    
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    """
-    Handles chat messages from the user.
-    Receives: {"message": "user's question", "history": [["user msg", "agent msg"], ...]}
-    Returns:  {"answer": "agent's response", "log": [...]}
-    """
+    """Handles chat messages from the frontend."""
     data = request.json
-    user_input = data.get('message')
-    # New: Get the conversation history from the request
+    user_input = data.get('message', '')
     history = data.get('history', [])
-
+    
     if not user_input:
         return jsonify({"error": "No message provided"}), 400
 
-    logging.info(f"Received message: '{user_input}', with {len(history)} turns in history.")
-    try:
-        # New: Pass the history to the agent runner
-        result = run_agent_once(user_input, history)
-
-        # Extract the final answer and the log
-        final_answer = result.get("final", "I'm sorry, I encountered an error.")
-        log_steps = result.get("log", [])
-
-        return jsonify({
-            "answer": final_answer,
-            "log": log_steps
-        })
-
-    except Exception as e:
-        error_id = os.urandom(8).hex()
-        logging.error(f"Error ID [{error_id}] during agent execution: {e}\n{traceback.format_exc()}")
-        return jsonify({"error": "An internal error occurred."}), 500
-
-@app.route('/api/status', methods=['GET'])
-def status():
-    """
-    Returns the current status of the agent system.
-    In a real-world scenario, this would be dynamic.
-    """
-    # This is mock data based on your request.
-    # In the future, this could be derived from a state management system.
-    status_data = {
-        "activeAgents": 4,
-        "tasksInProgress": 6,
-        "systemStatus": "Online",
-        "agents": ["Meta LLaMA Agent", "Cerebras Agent", "Research Agent", "Critic Agent"]
-    }
-    return jsonify(status_data)
-
-
-@app.route('/api/upload', methods=['POST'])
-def upload():
-    """
-    Handles file uploads for the knowledge base.
-    """
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
+    result = run_agent_once(user_input, history)
     
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
+    # Ensure the response is JSON serializable
+    final_answer = result.get("final", "Sorry, I encountered an issue.")
+    agent_log = result.get("log", [])
+    
+    return jsonify({"answer": final_answer, "log": agent_log})
 
-    if file:
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
+@app.route('/api/proposal/<int:proposal_id>/interrupt', methods=['POST'])
+def interrupt_proposal(proposal_id):
+    """Interrupts an in-progress agent task."""
+    try:
+        # Update the proposal status to 'interrupted'
+        # The background worker will see this and discard the agent's result.
+        data, count = supabase.table('proposals').update({'status': 'interrupted'}).eq('id', proposal_id).execute()
+        return jsonify({"message": "Interruption signal sent."}), 200
+    except Exception as e:
+        print(f"Error interrupting proposal {proposal_id}: {e}")
+        return jsonify({"error": str(e)}), 500
 
-        logging.info(f"File '{filename}' uploaded successfully. Ingesting...")
-        try:
-            # Ingest the file into the knowledge base
-            ingest_status = ingest_knowledge_base(file_path)
-            logging.info(ingest_status)
+# --- Static File Serving ---
 
-            # Now, trigger the agent to process the file with a generic prompt
-            status = f"File '{filename}' ingested. You can now ask questions about it."
-            return jsonify({"status": status})
-        except Exception as e:
-            error_id = os.urandom(8).hex()
-            logging.error(f"Error ID [{error_id}] during ingestion of '{filename}': {e}\n{traceback.format_exc()}")
-            return jsonify({"error": f"Failed to process file '{filename}'. Please contact support."}), 500
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    """Serves the React frontend."""
+    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')

@@ -28,11 +28,11 @@ from core.config import _llm, LLM_MODEL
 
 # Specialized LLM optimized for coding tasks
 _coding_llm = ChatCerebras(
-    model="qwen-3-coder-480b",
-    temperature=0.7,
+    model="llama-3.3-70b",
+    temperature=0.54,
     api_key=os.getenv("API_KEY"),
-    max_tokens=4000,
-    top_p=0.8
+    max_tokens=3755,
+    top_p=1
 )
 
 from tools import tool_write_file, tool_read_file, tool_run_code
@@ -56,8 +56,7 @@ coding_tool_executor = ToolExecutor(CODING_TOOLS)
 # ==================== UI Helper Functions ====================
 def format_section_header(title: str, emoji: str = "📌") -> str:
     """Create a visually distinct section header."""
-    border = "─" * 50
-    return f"\n{border}\n{emoji} {title}\n{border}"
+    return f"\n## {emoji} {title}\n"
 
 def format_code_block(code: str, language: str = "python") -> str:
     """Ensure code is properly formatted in markdown code blocks."""
@@ -421,31 +420,24 @@ def node_coding_verifier(state: CodingAgentState) -> CodingAgentState:
     draft = state.get("draft", "")
     observations = state.get("observations", [])
     
-    # Analyze execution results
+    # The draft from the executor is already well-formatted.
+    # We will just add a concluding summary instead of a large header.
+    final = draft
+    
+    # Add a note about errors if any occurred.
     total_steps = len(observations)
-    successful_steps = sum(1 for obs in observations if obs.get("success", False))
+    successful_steps = sum(1 for obs in observations if obs.get("success", True))
     failed_steps = total_steps - successful_steps
-    
-    # Build status summary
-    status_summary = format_section_header("Execution Summary", "📊") + f"""
-
-**Total Steps**: {total_steps}
-**Successful**: {successful_steps} ✅
-**Failed**: {failed_steps} ❌
-"""
-    
-    # Add warnings for errors
     if failed_steps > 0:
-        status_summary += f"\n⚠️  **Note**: {failed_steps} step(s) encountered errors. Review the details below.\n"
+        final += f"\n\n**Note**: {failed_steps} step(s) encountered errors. Please review the details above."
+    else:
+        final += "\n\nAll steps completed successfully."
     
-    # Combine status with draft
-    final = status_summary + "\n" + draft
-    
-    # Add helpful footer
-    final += f"\n\n{format_section_header('Need Help?', '💡')}\n"
-    final += "- Modify the code and run again\n"
-    final += "- Ask me to explain any part\n"
-    final += "- Request additional features or improvements\n"
+    # Add a simplified footer
+    final += "\n\nIf you need more help, you can ask me to:"
+    final += "\n- Modify the code"
+    final += "\n- Explain any part"
+    final += "\n- Request new features"
     
     print("✅ Response finalized and ready!\n")
     

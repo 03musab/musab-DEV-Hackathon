@@ -28,5 +28,16 @@ def serve():
     """Starts the Flask web server."""
     app.run(host='0.0.0.0', port=5000, debug=app.config['DEBUG'])
 
+@cli.command()
+@click.argument('user_input', required=False)
+def chat(user_input):
+    """Starts an interactive chat session with the agent."""
+    history = []
+    if not user_input:
+        user_input = click.prompt("User")
+    result = run_agent_once(user_input, history)
+    print("Agent:", result.get("final", "Sorry, I don't have an answer."))
+
+
 if __name__ == '__main__':
     cli()

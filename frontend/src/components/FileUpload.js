@@ -33,7 +33,7 @@ function fileUploadReducer(state, action) {
     }
 }
 
-const FileUpload = ({ onUploadSuccess, onUploadError, setIsUploading }) => {
+const FileUpload = ({ onUploadSuccess, onUploadError, setIsUploading, isUploading, isSidebarCollapsed }) => {
     const [isOpen, setIsOpen] = useState(true);
     const [state, dispatch] = useReducer(fileUploadReducer, initialState);
     const { selectedFile, isDragging, uploadProgress, status } = state;
@@ -120,10 +120,13 @@ const FileUpload = ({ onUploadSuccess, onUploadError, setIsUploading }) => {
 
     return (
         <div className="file-upload-container">
-            <div className="file-upload-header" onClick={() => setIsOpen(!isOpen)}>
-                <h2 className="file-upload-title">Upload Knowledge</h2>
-                <ChevronDown className={`file-upload-toggle-icon ${!isOpen ? 'closed' : ''}`} size={20} />
-            </div>
+            {!isSidebarCollapsed && (
+                <div className="file-upload-header" onClick={() => setIsOpen(!isOpen)}>
+                    <h2 className="file-upload-title">Upload Knowledge</h2>
+                    <ChevronDown className={`file-upload-toggle-icon ${!isOpen ? 'closed' : ''}`} size={20} />
+                </div>
+            )}
+
             <div className={`file-upload-content ${!isOpen ? 'closed' : ''}`}>
                 <div
                     className={`file-upload-dropzone ${status === 'dragging' ? 'dragging' : ''} ${selectedFile ? 'has-file' : ''}`}
@@ -186,12 +189,13 @@ const FileUpload = ({ onUploadSuccess, onUploadError, setIsUploading }) => {
                 </div>
 
                 <button
-                    className="file-upload-btn"
+                    className={`file-upload-btn ${isUploading ? 'loading' : ''}`}
                     onClick={handleUpload}
-                    disabled={!selectedFile || status === 'uploading'}
+                    disabled={!selectedFile || isUploading}
+                    title="Upload & Process"
                 >
                     <Upload size={16} />
-                    {status === 'uploading' ? 'Uploading...' : 'Upload & Process'}
+                    {!isSidebarCollapsed && <span className="upload-btn-text">{isUploading ? 'Uploading...' : 'Upload & Process'}</span>}
                 </button>
             </div>
         </div>
