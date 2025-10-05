@@ -3,9 +3,9 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy } from 'lucide-react';
+import { postChatMessage } from '../services/api'; // Import the API function
 
-const Chat = ({ setAgentLog, setIsLogLoading, log, isLoading: isLogLoading }) => {
-    const [messages, setMessages] = useState([]);
+const Chat = ({ messages, setMessages, setAgentLog, setIsLogLoading }) => {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const chatWindowRef = useRef(null);
@@ -16,6 +16,21 @@ const Chat = ({ setAgentLog, setIsLogLoading, log, isLoading: isLogLoading }) =>
             chatWindowRef.current.scrollTop = chatWindowRef.current.scrollHeight;
         }
     }, [messages]);
+
+    const createChatHistory = (msgs) => {
+        const history = [];
+        // Iterate through messages to form user/agent pairs
+        for (let i = 0; i < msgs.length; i += 2) {
+            const userMsg = msgs[i];
+            const agentMsg = msgs[i + 1];
+
+            if (userMsg?.sender === 'user' && agentMsg?.sender === 'agent') {
+                history.push([userMsg.text, agentMsg.text]);
+            }
+        }
+        // Return the last 5 turns
+        return history.slice(-5);
+    };
 
     const handleSend = async () => {
         if (!input.trim()) return;
@@ -28,26 +43,20 @@ const Chat = ({ setAgentLog, setIsLogLoading, log, isLoading: isLogLoading }) =>
         setAgentLog([]); // Clear previous log
 
         try {
-            const response = await fetch('http://localhost:5000/api/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    message: input,
-                    history: messages.map(m => [m.sender === 'user' ? m.text : '', m.sender === 'agent' ? m.text : '']).slice(-5)
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            const agentMessage = { text: data.answer, sender: 'agent' };
+            // Use the centralized API function
+            const history = createChatHistory(messages);
+            const data = await postChatMessage(input, history);
+            
+            const agentMessage = { 
+                text: data.answer || "I'm sorry, I encountered an issue and couldn't process your request. Please try again.", 
+                sender: 'agent' 
+            };
             setMessages(prev => [...prev, agentMessage]);
             setAgentLog(data.log || []);
 
         } catch (error) {
-            console.error("Failed to send message:", error);
+            // Enhanced error logging
+            console.error("Failed to send message. Full error:", error);
             const errorMessage = { text: `Error: Could not connect to the agent. ${error.message}`, sender: 'agent' };
             setMessages(prev => [...prev, errorMessage]);
         } finally {

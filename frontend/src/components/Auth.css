@@ -1,0 +1,168 @@
+/* ==================== Auth Container ==================== */
+.auth-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background-color: var(--primary-bg);
+    font-family: var(--font-family-sans);
+}
+
+/* ==================== Auth Card ==================== */
+.auth-card {
+    background: var(--secondary-bg);
+    padding: 40px;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    width: 100%;
+    max-width: 400px;
+    box-shadow: var(--shadow-lg);
+    position: relative; /* Needed for the loader overlay */
+    text-align: center;
+}
+
+.auth-title {
+    font-family: var(--font-family-slab, sans-serif);
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 8px 0;
+}
+
+.auth-subtitle {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0 0 32px 0;
+}
+
+/* ==================== Form & Inputs ==================== */
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.input-group {
+    text-align: left;
+}
+
+.input-group label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 12px 14px;
+    background: var(--primary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    transition: border-color 0.3s var(--ease-out-quint, ease), box-shadow 0.3s var(--ease-out-quint, ease);
+}
+
+.input-group input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(0, 191, 166, 0.3);
+}
+
+/* ==================== Auth Button ==================== */
+.auth-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 20px;
+    background: var(--accent-color);
+    color: var(--primary-bg);
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s var(--ease-out-quint, ease);
+    box-shadow: 0 4px 12px rgba(0, 191, 166, 0.2);
+    margin-top: 12px;
+}
+
+.auth-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 191, 166, 0.3);
+}
+
+.auth-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* ==================== Big Loader Overlay ==================== */
+.auth-loader-overlay {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(var(--secondary-bg-rgb), 0.85);
+    backdrop-filter: blur(4px);
+    border-radius: 16px;
+    display: flex; /* Use flexbox for alignment */
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    color: var(--text-primary);
+}
+
+.auth-loader-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    /* This transform will move the loader down slightly from the perfect center */
+    transform: translateY(10px); 
+}
+
+.auth-loader-content p {
+    margin-top: 16px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+.spinner-big {
+    width: 48px;
+    height: 48px;
+    border: 4px solid var(--border-color);
+    border-top-color: var(--accent-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ==================== Toggle Link ==================== */
+.auth-toggle {
+    margin-top: 24px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.auth-toggle button {
+    background: none;
+    border: none;
+    color: var(--accent-color);
+    font-weight: 600;
+    cursor: pointer;
+    margin-left: 6px;
+    padding: 0;
+    font-size: 0.85rem;
+}
+
+.auth-toggle button:hover {
+    text-decoration: underline;
+}

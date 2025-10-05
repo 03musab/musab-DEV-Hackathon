@@ -1,67 +1,70 @@
-import React, { useState } from 'react';
-import Chat from './components/Chat';
-import FileUpload from './components/FileUpload';
-import AgentLog from './components/AgentLog';
+import React, { useState, useEffect, useCallback } from 'react';
+import { supabase } from './components/supabaseClient';
+import * as api from './services/api';
+import Auth from './components/Auth';
+import Dashboard from './components/Dashboard.js';
+import { ToastProvider, useToast } from './components/ToastContext';
+import { NotificationProvider } from './components/NotificationContext.js';
 import './App.css';
 
-function App() {
-    const [uploadStatus, setUploadStatus] = useState('');
-    const [isUploading, setIsUploading] = useState(false);
-    const [chatKey, setChatKey] = useState(Date.now()); // Used to reset chat
-    const [agentLog, setAgentLog] = useState([]);
-    const [isLogLoading, setIsLogLoading] = useState(false);
+function AppContent() {
+    const [session, setSession] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [isValidated, setIsValidated] = useState(false); // New state to track validation
+    const { addToast } = useToast();
+    
+    useEffect(() => {
+        // By defining the validation function inside useEffect, we avoid useCallback dependencies
+        // and ensure it always has the correct `addToast` reference.
+        const validateAndSetSession = async (sessionToValidate) => {
+            if (sessionToValidate?.user) {
+                try {
+                    await api.getProfile(sessionToValidate.user.id);
+                    setSession(sessionToValidate);
+                    setIsValidated(true);
+                } catch (e) {
+                    addToast(e.message, 'error');
+                    api.signOutUser(); // This will trigger onAuthStateChange to nullify the session.
+                }
+            } else {
+                // No session.
+                setSession(null);
+                setIsValidated(true); // No session to validate, so we are "validated" in a sense.
+            }
+            setLoading(false);
+        };
+        
+        // onAuthStateChange fires immediately with the current session, so we don't need a separate getSession() call.
+        // This single listener handles initial load, login, logout, and token refresh events.
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+            // The listener provides the most up-to-date session state.
+            // We simply pass it to our validation function.
+            validateAndSetSession(newSession);
+        });
 
-    const handleUploadSuccess = (status) => {
-        setUploadStatus(status);
-        setIsUploading(false);
-        // Optional: Clear the status message after a few seconds
-        setTimeout(() => setUploadStatus(''), 5000);
-    };
+        return () => subscription.unsubscribe();
+    }, [addToast]); // useEffect now only depends on the stable `addToast` function.
 
-    const handleUploadError = (error) => {
-        setUploadStatus(`Upload failed: ${error}`);
-        setIsUploading(false);
-    };
-
-    const handleNewChat = () => {
-        setChatKey(Date.now()); // Change key to force re-mount of Chat component
-        setUploadStatus('');
-        setAgentLog([]);
-    };
+    if (loading) {
+        return <div>Loading...</div>; // Or a spinner component
+    }
 
     return (
-        <div className="App">
-            <main className="App-main">
-                {/* Left Sidebar */}
-                <div className="sidebar">
-                    <button onClick={handleNewChat} className="new-chat-button">
-                        + New Chat
-                    </button>
-                    <div className="upload-section">
-                        <div className="file-upload">
-                            <FileUpload
-                                onUploadSuccess={handleUploadSuccess}
-                                onUploadError={handleUploadError}
-                                setIsUploading={setIsUploading}
-                            />
-                            {isUploading && <p className="status-message">Uploading...</p>}
-                            {uploadStatus && <p className="status-message">{uploadStatus}</p>}
-                        </div>
-                    </div>
-                </div>
-                <div className="chat-container">
-                    <Chat 
-                        key={chatKey} 
-                        setAgentLog={setAgentLog}
-                        setIsLogLoading={setIsLogLoading}
-                    />
-                </div>
-                <AgentLog 
-                    log={agentLog} 
-                    isLoading={isLogLoading} 
-                />
-            </main>
-        </div>
+        !session || !isValidated ? ( // Gate rendering on both session and validation status
+            <Auth />
+        ) : (
+            <NotificationProvider session={session}>
+                <Dashboard key={session.user.id} session={session} />
+            </NotificationProvider>
+        )
+    );
+}
+
+function App() {
+    return (
+        <ToastProvider>
+            <AppContent />
+        </ToastProvider>
     );
 }
 
